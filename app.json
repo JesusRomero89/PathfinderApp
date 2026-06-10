@@ -21,6 +21,11 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.tuusuario.pathfinderapp"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "275ab126-f320-469e-aeeb-ef0478c7f81b"
+      }
     }
   }
 }
