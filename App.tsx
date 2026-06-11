@@ -8,11 +8,14 @@ import {
   SafeAreaView, 
   TouchableOpacity, 
   ActivityIndicator,
-  useWindowDimensions
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Picker } from '@react-native-picker/picker';
 
-const STORAGE_KEY = '@pathfinder_native_character_v13';
+const STORAGE_KEY = '@pathfinder_native_multicharacter_v13';
 
 const COMPETENCE_BONUS: Record<string, number> = {
   untrained: 0,
@@ -46,6 +49,7 @@ interface AttackData {
 }
 
 interface CharacterSheet {
+  id: string; // Identificador Único de Ficha
   name: string;
   level: number;
   ancestrality: string;
@@ -101,40 +105,41 @@ const defaultFeatsText =
 • Rastreador Experimentado (Habilidad 1): Rastreas a velocidad completa usando Supervivencia.
 • Mirada Intimidante (Habilidad 2): Desmoraliza con los ojos. Ignora barreras de idioma y el penalizador de -2.`;
 
-const initialData: CharacterSheet = {
-  name: "Bárbaro Hombre Rata (Oso)",
-  level: 2,
-  ancestrality: "Beastkin (Ysoki)",
-  heritage: "Rata de Cloaca",
+const createNewCharacter = (name = "Nuevo Aventurero"): CharacterSheet => ({
+  id: Date.now().toString(),
+  name: name,
+  level: 1,
+  ancestrality: "Humano",
+  heritage: "Versátil",
   size: "Medio",
-  className: "Bárbaro (Instinto Animal)",
+  className: "Guerrero",
   heroPoints: 1,
-  hpCurrent: 34,
-  hpMax: 34,
+  hpCurrent: 20,
+  hpMax: 20,
   hpTemp: 0,
   dying: 0,
   wounded: 0,
   speed: 9,
-  armorItemBonus: 2,
+  armorItemBonus: 0,
   armorProficiency: 'trained',
-  perceptionProf: 'expert',
+  perceptionProf: 'trained',
   perceptionItem: 0,
-  strength: 4,
+  strength: 2,
   dexterity: 2,
-  constitution: 3,
-  intelligence: -1,
-  wisdom: 1,
-  charisma: 2,
-  fortitude: initialSave('expert'),
+  constitution: 2,
+  intelligence: 0,
+  wisdom: 0,
+  charisma: 0,
+  fortitude: initialSave('trained'),
   reflexes: initialSave('trained'),
-  will: initialSave('expert'),
+  will: initialSave('trained'),
   acrobatics: initialSkill(),
   arcana: initialSkill(),
-  athletics: { prof: 'trained', item: 0, armorPen: 0 },
+  athletics: initialSkill(),
   diplomacy: initialSkill(),
   deception: initialSkill(),
   stealth: initialSkill(),
-  intimidation: { prof: 'trained', item: 0, armorPen: 0 },
+  intimidation: initialSkill(),
   thievery: initialSkill(),
   crafting: initialSkill(),
   medicine: initialSkill(),
@@ -143,13 +148,10 @@ const initialData: CharacterSheet = {
   performance: initialSkill(),
   religion: initialSkill(),
   society: initialSkill(),
-  survival: { prof: 'trained', item: 0, armorPen: 0 },
-  meleeAttacks: [
-    { weapon: "Fauces de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d10", specDamage: 2 },
-    { weapon: "Garras de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d6", specDamage: 2 }
-  ],
-  featsText: defaultFeatsText,
-};
+  survival: initialSkill(),
+  meleeAttacks: [],
+  featsText: "• Dote Inicial: Añade tus anotaciones aquí.",
+});
 
 const PROF_LABELS: { label: string; value: Proficiency }[] = [
   { label: 'S', value: 'untrained' },
@@ -160,7 +162,8 @@ const PROF_LABELS: { label: string; value: Proficiency }[] = [
 ];
 
 export default function App() {
-  const [character, setCharacter] = useState<CharacterSheet>(initialData);
+  const [characterList, setCharacterList] = useState<CharacterSheet[]>([]);
+  const [activeId, setActiveId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const { width } = useWindowDimensions();
 
@@ -172,11 +175,31 @@ export default function App() {
   const [openFeats, setOpenFeats] = useState(false);
 
   useEffect(() => {
-    const loadCharacterData = async () => {
+    const loadAllCharacters = async () => {
       try {
         const savedData = await AsyncStorage.getItem(STORAGE_KEY);
         if (savedData !== null) {
-          setCharacter(JSON.parse(savedData));
+          const list: CharacterSheet[] = JSON.parse(savedData);
+          setCharacterList(list);
+          if (list.length > 0) setActiveId(list[0].id);
+        } else {
+          // Si no hay datos, creamos el bárbaro por defecto
+          const defaultBarbarian = { ...createNewCharacter("Bárbaro Hombre Rata (Oso)"), level: 2, ancestrality: "Beastkin (Ysoki)", heritage: "Rata de Cloaca", className: "Bárbaro (Instinto Animal)", hpCurrent: 34, hpMax: 34, strength: 4, dexterity: 2, constitution: 3, intelligence: -1, wisdom: 1, charisma: 2, featsText: defaultFeatsText };
+          defaultBarbarian.meleeAttacks = [
+            { weapon: "Fauces de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d10", specDamage: 2 },
+            { weapon: "Garras de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d6", specDamage: 2 }
+          ];
+          defaultBarbarian.fortitude.prof = 'expert';
+          defaultBarbarian.will.prof = 'expert';
+          defaultBarbarian.athletics.prof = 'trained';
+          defaultBarbarian.intimidation.prof = 'trained';
+          defaultBarbarian.survival.prof = 'trained';
+          defaultBarbarian.perceptionProf = 'expert';
+          
+          const initialList = [defaultBarbarian];
+          setCharacterList(initialList);
+          setActiveId(defaultBarbarian.id);
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initialList));
         }
       } catch (error) {
         console.error("Error al leer el disco nativo:", error);
@@ -184,22 +207,45 @@ export default function App() {
         setLoading(false);
       }
     };
-    loadCharacterData();
+    loadAllCharacters();
   }, []);
 
-  const saveCharacterData = async (updatedCharacter: CharacterSheet) => {
+  const character = characterList.find(c => c.id === activeId) || characterList[0];
+
+  const saveAllData = async (updatedList: CharacterSheet[]) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedCharacter));
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
     } catch (error) {
       console.error("Error al escribir en el disco nativo:", error);
     }
   };
 
+  const updateCharacterInList = (updatedChar: CharacterSheet) => {
+    const updatedList = characterList.map(c => c.id === updatedChar.id ? updatedChar : c);
+    setCharacterList(updatedList);
+    saveAllData(updatedList);
+  };
+
+  const addNewCharacterSheet = () => {
+    const newChar = createNewCharacter();
+    const updatedList = [...characterList, newChar];
+    setCharacterList(updatedList);
+    setActiveId(newChar.id);
+    saveAllData(updatedList);
+  };
+
+  const deleteActiveCharacterSheet = () => {
+    if (characterList.length <= 1) return; // Forzar al menos una activa
+    const updatedList = characterList.filter(c => c.id !== activeId);
+    setCharacterList(updatedList);
+    setActiveId(updatedList[0].id);
+    saveAllData(updatedList);
+  };
+
   const updateField = (field: keyof CharacterSheet, value: any) => {
     const parsedValue = typeof character[field] === 'number' ? parseInt(value) || 0 : value;
     const updatedCharacter = { ...character, [field]: parsedValue };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const handleHeroPoints = (point: number) => {
@@ -217,8 +263,7 @@ export default function App() {
       ...character,
       [skillKey]: { ...currentSkill, [subField]: parsedValue }
     };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const updateSave = (saveKey: 'fortitude' | 'reflexes' | 'will', subField: keyof SavingThrowData, value: any) => {
@@ -228,8 +273,7 @@ export default function App() {
       ...character,
       [saveKey]: { ...currentSave, [subField]: parsedValue }
     };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const addMeleeAttack = () => {
@@ -244,8 +288,7 @@ export default function App() {
     };
     const updatedAttacks = [...character.meleeAttacks, newAttack];
     const updatedCharacter = { ...character, meleeAttacks: updatedAttacks };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const updateAttack = (index: number, subField: keyof AttackData, value: any) => {
@@ -256,15 +299,13 @@ export default function App() {
     }
     updatedAttacks[index] = { ...updatedAttacks[index], [subField]: parsedValue };
     const updatedCharacter = { ...character, meleeAttacks: updatedAttacks };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const removeAttack = (index: number) => {
     const updatedAttacks = character.meleeAttacks.filter((_, i) => i !== index);
     const updatedCharacter = { ...character, meleeAttacks: updatedAttacks };
-    setCharacter(updatedCharacter);
-    saveCharacterData(updatedCharacter);
+    updateCharacterInList(updatedCharacter);
   };
 
   const getProfBonus = (prof: Proficiency) => {
@@ -275,11 +316,11 @@ export default function App() {
     return 10 + character.dexterity + character.armorItemBonus + getProfBonus(character.armorProficiency);
   };
 
-  if (loading) {
+  if (loading || !character) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#004424" />
-        <Text style={styles.loadingText}>Sincronizando sistemas robóticos...</Text>
+        <Text style={styles.loadingText}>Sincronizando Crónicas Múltiples...</Text>
       </SafeAreaView>
     );
   }
@@ -305,294 +346,332 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollContainer, { width: width }]}>
-        
-        {/* CABECERA */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>PATHFINDER</Text>
-          <View style={styles.headerSubtitleContainer}>
-            <Text style={styles.headerSubtitle}>Ficha Móvil de Campaña</Text>
-          </View>
-        </View>
-
-        {/* COLAPSABLE: IDENTIDAD */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenBio(!openBio)}>
-          <Text style={styles.summaryText}>Identidad y Biografía</Text>
-          <Text style={styles.summaryArrow}>{openBio ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openBio && (
-          <View style={styles.detailsBox}>
-            <View style={styles.verticalField}>
-              <Text style={styles.fieldLabelPrimary}>Nombre del Personaje</Text>
-              <TextInput style={styles.inputBold} value={character.name} onChangeText={(text) => updateField('name', text)} />
-            </View>
-            <View style={styles.verticalField}>
-              <Text style={styles.fieldLabel}>Clase y Senda</Text>
-              <TextInput style={styles.input} value={character.className} onChangeText={(text) => updateField('className', text)} />
-            </View>
-            <View style={styles.verticalField}>
-              <Text style={styles.fieldLabel}>Ancestralidad</Text>
-              <TextInput style={styles.input} value={character.ancestrality} onChangeText={(text) => updateField('ancestrality', text)} />
-            </View>
-            <View style={styles.verticalField}>
-              <Text style={styles.fieldLabel}>Herencia</Text>
-              <TextInput style={styles.input} value={character.heritage} onChangeText={(text) => updateField('heritage', text)} />
-            </View>
-            <View style={styles.rowLayout}>
-              <View style={[styles.verticalField, { flex: 1, marginRight: 6 }]}>
-                <Text style={styles.fieldLabel}>Nivel</Text>
-                <TextInput style={styles.inputCenterBold} keyboardType="numeric" value={character.level.toString()} onChangeText={(text) => updateField('level', text)} />
-              </View>
-              <View style={[styles.verticalField, { flex: 1, marginLeft: 6 }]}>
-                <Text style={styles.fieldLabel}>Tamaño</Text>
-                <TextInput style={styles.inputCenter} value={character.size} onChangeText={(text) => updateField('size', text)} />
-              </View>
-            </View>
-            <View style={styles.heroPointsContainer}>
-              <Text style={styles.fieldLabelPrimary}>Puntos Heroicos (Toca para activar/desactivar)</Text>
-              <View style={styles.rowLayout}>
-                {[1, 2, 3].map((i) => (
-                  <TouchableOpacity key={i} onPress={() => handleHeroPoints(i)} style={[styles.heroButton, character.heroPoints >= i ? styles.heroButtonActive : styles.heroButtonInactive]}>
-                    <Text style={character.heroPoints >= i ? styles.heroTextActive : styles.heroTextInactive}>{i}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* COMBATE, DEFENSA Y VITALIDAD */}
-        <View style={styles.combateCard}>
-          <View style={styles.rowLayout}>
-            <View style={[styles.quickStatBox, { marginRight: 4 }]}>
-              <Text style={styles.quickStatLabelPrimary}>CA</Text>
-              <Text style={styles.quickStatValuePrimary}>{calculateAC()}</Text>
-            </View>
-            <View style={[styles.quickStatBox, { marginHorizontal: 4 }]}>
-              <Text style={styles.quickStatLabel}>Vida Actual</Text>
-              <TextInput style={styles.hpInput} keyboardType="numeric" value={character.hpCurrent.toString()} onChangeText={(text) => updateField('hpCurrent', text)} />
-            </View>
-            <View style={[styles.quickStatBox, { marginLeft: 4 }]}>
-              <Text style={styles.quickStatLabel}>Velocidad</Text>
-              <View style={styles.speedRow}>
-                <TextInput style={styles.speedInput} keyboardType="numeric" value={character.speed.toString()} onChangeText={(text) => updateField('speed', text)} />
-                <Text style={styles.unitText}>m</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.hpManagerBox}>
-            <Text style={styles.subBoxLabel}>Puntos de Golpe Máximos</Text>
-            <TextInput style={styles.inputCenterBoldText} keyboardType="numeric" value={character.hpMax.toString()} onChangeText={(text) => updateField('hpMax', text)} />
-            
-            <View style={styles.statesRow}>
-              <View style={styles.stateCell}>
-                <Text style={styles.stateLabelDying}>Moribundo</Text>
-                <TextInput style={styles.stateInputDying} keyboardType="numeric" value={character.dying.toString()} onChangeText={(text) => updateField('dying', text)} />
-              </View>
-              <View style={styles.stateCell}>
-                <Text style={styles.stateLabelWounded}>Herido</Text>
-                <TextInput style={styles.stateInputWounded} keyboardType="numeric" value={character.wounded.toString()} onChangeText={(text) => updateField('wounded', text)} />
-              </View>
-            </View>
-          </View>
-
-          {/* PERCEPCIÓN REESTRUCTURADA */}
-          <View style={styles.perceptionContainerIndependent}>
-            <Text style={styles.quickStatLabelPrimary}>Percepción</Text>
-            <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
-              <View style={styles.selectorRowGroup}>
-                {PROF_LABELS.map((p) => (
-                  <TouchableOpacity key={p.value} onPress={() => updateField('perceptionProf', p.value)} style={[styles.selectorButtonState, character.perceptionProf === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
-                    <Text style={character.perceptionProf === p.value ? styles.selectorTextActive : styles.selectorTextInactive}>{p.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.modBadge}>
-                <Text style={styles.modBadgeText}>+{character.wisdom + getProfBonus(character.perceptionProf) + character.perceptionItem}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* COLAPSABLE: ATRIBUTOS PRIMARIOS */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenAttr(!openAttr)}>
-          <Text style={styles.summaryText}>Atributos Primarios</Text>
-          <Text style={styles.summaryArrow}>{openAttr ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openAttr && (
-          <View style={styles.detailsBox}>
-            {[
-              { label: 'Fuerza (FUE)', field: 'strength' },
-              { label: 'Destreza (DES)', field: 'dexterity' },
-              { label: 'Constitución (CON)', field: 'constitution' },
-              { label: 'Inteligencia (INT)', field: 'intelligence' },
-              { label: 'Sabiduría (SAB)', field: 'wisdom' },
-              { label: 'Carisma (CAR)', field: 'charisma' },
-            ].map((attr) => (
-              <View key={attr.field} style={styles.attrRowIndependent}>
-                <Text style={styles.attrLabelText}>{attr.label}</Text>
-                <TextInput style={styles.attrInputBox} keyboardType="numeric" value={character[attr.field as keyof CharacterSheet].toString()} onChangeText={(text) => updateField(attr.field as keyof CharacterSheet, text)} />
-              </View>
+      
+      {/* PANEL SUPERIOR DE SELECCIÓN DE HOJAS */}
+      <View style={styles.multiCharacterBar}>
+        <View style={styles.pickerManagerWrapper}>
+          <Picker
+            selectedValue={activeId}
+            style={styles.pickerSelectorNativo}
+            dropdownIconColor="#ffffff"
+            onValueChange={(itemValue) => setActiveId(itemValue)}
+          >
+            {characterList.map((char) => (
+              <Picker.Item key={char.id} label={char.name || "Sin Nombre"} value={char.id} />
             ))}
-          </View>
-        )}
+          </Picker>
+        </View>
+        <View style={styles.multiBarActionsGroup}>
+          <TouchableOpacity style={styles.barButtonAdd} onPress={addNewCharacterSheet}>
+            <Text style={styles.barButtonText}>+ Nuevo</Text>
+          </TouchableOpacity>
+          {characterList.length > 1 && (
+            <TouchableOpacity style={styles.barButtonDelete} onPress={deleteActiveCharacterSheet}>
+              <Text style={styles.barButtonText}>✕ Borrar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
-        {/* COLAPSABLE: SALVACIONES REESTRUCTURADAS */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenSaves(!openSaves)}>
-          <Text style={styles.summaryText}>Defensas de Salvación</Text>
-          <Text style={styles.summaryArrow}>{openSaves ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openSaves && (
-          <View style={styles.detailsBox}>
-            {[
-              { name: 'Fortaleza (CON)', field: 'fortitude', attrVal: character.constitution },
-              { name: 'Reflejos (DES)', field: 'reflexes', attrVal: character.dexterity },
-              { name: 'Voluntad (SAB)', field: 'will', attrVal: character.wisdom },
-            ].map((save) => {
-              const saveData = character[save.field as 'fortitude' | 'reflexes' | 'will'];
-              const totalSave = save.attrVal + getProfBonus(saveData.prof) + saveData.item;
-              return (
-                <View key={save.field} style={styles.saveContainerBlock}>
-                  <Text style={styles.saveTitleName}>{save.name}</Text>
-                  <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
-                    <View style={styles.selectorRowGroup}>
-                      {PROF_LABELS.map((p) => (
-                        <TouchableOpacity key={p.value} onPress={() => updateSave(save.field as any, 'prof', p.value)} style={[styles.selectorButtonState, saveData.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
-                          <Text style={saveData.prof === p.value ? styles.selectorTextActive : styles.selectorTextInactive}>{p.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <View style={styles.modBadge}>
-                      <Text style={styles.modBadgeText}>{totalSave >= 0 ? `+${totalSave}` : totalSave}</Text>
-                    </View>
-                  </View>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          contentContainerStyle={[styles.scrollContainer, { width: width }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          
+          {/* CABECERA DE HOJA */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>PATHFINDER</Text>
+            <View style={styles.headerSubtitleContainer}>
+              <Text style={styles.headerSubtitle}>Ficha Móvil Multihéroe</Text>
+            </View>
+          </View>
+
+          {/* COLAPSABLE: IDENTIDAD */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenBio(!openBio)}>
+            <Text style={styles.summaryText}>Identidad y Biografía</Text>
+            <Text style={styles.summaryArrow}>{openBio ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openBio && (
+            <View style={styles.detailsBox}>
+              <View style={styles.verticalField}>
+                <Text style={styles.fieldLabelPrimary}>Nombre del Personaje (Sincroniza la lista)</Text>
+                <TextInput style={styles.inputBold} value={character.name} onChangeText={(text) => updateField('name', text)} />
+              </View>
+              <View style={styles.verticalField}>
+                <Text style={styles.fieldLabel}>Clase y Senda</Text>
+                <TextInput style={styles.input} value={character.className} onChangeText={(text) => updateField('className', text)} />
+              </View>
+              <View style={styles.verticalField}>
+                <Text style={styles.fieldLabel}>Ancestralidad</Text>
+                <TextInput style={styles.input} value={character.ancestrality} onChangeText={(text) => updateField('ancestrality', text)} />
+              </View>
+              <View style={styles.verticalField}>
+                <Text style={styles.fieldLabel}>Herencia</Text>
+                <TextInput style={styles.input} value={character.heritage} onChangeText={(text) => updateField('heritage', text)} />
+              </View>
+              <View style={styles.rowLayout}>
+                <View style={[styles.verticalField, { flex: 1, marginRight: 6 }]}>
+                  <Text style={styles.fieldLabel}>Nivel</Text>
+                  <TextInput style={styles.inputCenterBold} keyboardType="numeric" value={character.level.toString()} onChangeText={(text) => updateField('level', text)} />
                 </View>
-              );
-            })}
-          </View>
-        )}
+                <View style={[styles.verticalField, { flex: 1, marginLeft: 6 }]}>
+                  <Text style={styles.fieldLabel}>Tamaño</Text>
+                  <TextInput style={styles.inputCenter} value={character.size} onChangeText={(text) => updateField('size', text)} />
+                </View>
+              </View>
+              <View style={styles.heroPointsContainer}>
+                <Text style={styles.fieldLabelPrimary}>Puntos Heroicos (Toca para activar/desactivar)</Text>
+                <View style={styles.rowLayout}>
+                  {[1, 2, 3].map((i) => (
+                    <TouchableOpacity key={i} onPress={() => handleHeroPoints(i)} style={[styles.heroButton, character.heroPoints >= i ? styles.heroButtonActive : styles.heroButtonInactive]}>
+                      <Text style={character.heroPoints >= i ? styles.heroTextActive : styles.heroTextInactive}>{i}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
 
-        {/* COLAPSABLE: GOLPES (DINÁMICO) */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenAttacks(!openAttacks)}>
-          <Text style={styles.summaryText}>Golpes y Armas Múltiples</Text>
-          <Text style={styles.summaryArrow}>{openAttacks ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openAttacks && (
-          <View style={styles.detailsBox}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={styles.weaponTypeHeader}>Cuerpo a Cuerpo</Text>
-              <TouchableOpacity style={styles.addButton} onPress={addMeleeAttack}>
-                <Text style={styles.addButtonText}>+ Añadir Arma</Text>
-              </TouchableOpacity>
+          {/* COMBATE, DEFENSA Y VITALIDAD */}
+          <View style={styles.combateCard}>
+            <View style={styles.rowLayout}>
+              <View style={[styles.quickStatBox, { marginRight: 4 }]}>
+                <Text style={styles.quickStatLabelPrimary}>CA</Text>
+                <Text style={styles.quickStatValuePrimary}>{calculateAC()}</Text>
+              </View>
+              <View style={[styles.quickStatBox, { marginHorizontal: 4 }]}>
+                <Text style={styles.quickStatLabel}>Vida Actual</Text>
+                <TextInput style={styles.hpInput} keyboardType="numeric" value={character.hpCurrent.toString()} onChangeText={(text) => updateField('hpCurrent', text)} />
+              </View>
+              <View style={[styles.quickStatBox, { marginLeft: 4 }]}>
+                <Text style={styles.quickStatLabel}>Velocidad</Text>
+                <View style={styles.speedRow}>
+                  <TextInput style={styles.speedInput} keyboardType="numeric" value={character.speed.toString()} onChangeText={(text) => updateField('speed', text)} />
+                  <Text style={styles.unitText}>m</Text>
+                </View>
+              </View>
             </View>
 
-            {character.meleeAttacks.map((attack, index) => {
-              const modifierAttr = attack.attrType === 'FUE' ? character.strength : character.dexterity;
-              const atkBonus = modifierAttr + getProfBonus(attack.prof) + attack.item;
-              return (
-                <View key={index} style={styles.weaponAtkCardModifier}>
-                  <View style={styles.rowLayout}>
-                    <TextInput 
-                      style={styles.weaponInputNameEditable} 
-                      value={attack.weapon} 
-                      onChangeText={(t) => updateAttack(index, 'weapon', t)} 
-                    />
-                    <TouchableOpacity style={styles.removeWeaponButton} onPress={() => removeAttack(index)}>
-                      <Text style={styles.removeWeaponButtonText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
+            <View style={styles.hpManagerBox}>
+              <Text style={styles.subBoxLabel}>Puntos de Golpe Máximos</Text>
+              <TextInput style={styles.inputCenterBoldText} keyboardType="numeric" value={character.hpMax.toString()} onChangeText={(text) => updateField('hpMax', text)} />
+              
+              <View style={styles.statesRow}>
+                <View style={styles.stateCell}>
+                  <Text style={styles.stateLabelDying}>Moribundo</Text>
+                  <TextInput style={styles.stateInputDying} keyboardType="numeric" value={character.dying.toString()} onChangeText={(text) => updateField('dying', text)} />
+                </View>
+                <View style={styles.stateCell}>
+                  <Text style={styles.stateLabelWounded}>Herido</Text>
+                  <TextInput style={styles.stateInputWounded} keyboardType="numeric" value={character.wounded.toString()} onChangeText={(text) => updateField('wounded', text)} />
+                </View>
+              </View>
+            </View>
 
-                  <View style={[styles.rowLayout, { marginTop: 6, gap: 6, alignItems: 'center' }]}>
-                    <View style={{ flex: 1.5 }}>
-                      <Text style={styles.fieldLabel}>Competencia</Text>
-                      <View style={styles.selectorRowGroupSmall}>
+            {/* PERCEPCIÓN */}
+            <View style={styles.perceptionContainerIndependent}>
+              <Text style={styles.quickStatLabelPrimary}>Percepción</Text>
+              <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
+                <View style={styles.selectorRowGroup}>
+                  {PROF_LABELS.map((p) => (
+                    <TouchableOpacity key={p.value} onPress={() => updateField('perceptionProf', p.value)} style={[styles.selectorButtonState, character.perceptionProf === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
+                      <Text style={character.perceptionProf === p.value ? styles.selectorTextActive : styles.selectorTextInactive}>{p.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.modBadge}>
+                  <Text style={styles.modBadgeText}>+{character.wisdom + getProfBonus(character.perceptionProf) + character.perceptionItem}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* COLAPSABLE: ATRIBUTOS PRIMARIOS */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenAttr(!openAttr)}>
+            <Text style={styles.summaryText}>Atributos Primarios</Text>
+            <Text style={styles.summaryArrow}>{openAttr ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openAttr && (
+            <View style={styles.detailsBox}>
+              {[
+                { label: 'Fuerza (FUE)', field: 'strength' },
+                { label: 'Destreza (DES)', field: 'dexterity' },
+                { label: 'Constitución (CON)', field: 'constitution' },
+                { label: 'Inteligencia (INT)', field: 'intelligence' },
+                { label: 'Sabiduría (SAB)', field: 'wisdom' },
+                { label: 'Carisma (CAR)', field: 'charisma' },
+              ].map((attr) => (
+                <View key={attr.field} style={styles.attrRowIndependent}>
+                  <Text style={styles.attrLabelText}>{attr.label}</Text>
+                  <TextInput style={styles.attrInputBox} keyboardType="numeric" value={character[attr.field as keyof CharacterSheet].toString()} onChangeText={(text) => updateField(attr.field as keyof CharacterSheet, text)} />
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* COLAPSABLE: SALVACIONES */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenSaves(!openSaves)}>
+            <Text style={styles.summaryText}>Defensas de Salvación</Text>
+            <Text style={styles.summaryArrow}>{openSaves ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openSaves && (
+            <View style={styles.detailsBox}>
+              {[
+                { name: 'Fortaleza (CON)', field: 'fortitude', attrVal: character.constitution },
+                { name: 'Reflejos (DES)', field: 'reflexes', attrVal: character.dexterity },
+                { name: 'Voluntad (SAB)', field: 'will', attrVal: character.wisdom },
+              ].map((save) => {
+                const saveData = character[save.field as 'fortitude' | 'reflexes' | 'will'];
+                const totalSave = save.attrVal + getProfBonus(saveData.prof) + saveData.item;
+                return (
+                  <View key={save.field} style={styles.saveContainerBlock}>
+                    <Text style={styles.saveTitleName}>{save.name}</Text>
+                    <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
+                      <View style={styles.selectorRowGroup}>
                         {PROF_LABELS.map((p) => (
-                          <TouchableOpacity key={p.value} onPress={() => updateAttack(index, 'prof', p.value)} style={[styles.selectorButtonStateSmall, attack.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
-                            <Text style={attack.prof === p.value ? styles.selectorTextActiveSmall : styles.selectorTextInactiveSmall}>{p.label}</Text>
+                          <TouchableOpacity key={p.value} onPress={() => updateSave(save.field as any, 'prof', p.value)} style={[styles.selectorButtonState, saveData.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
+                            <Text style={saveData.prof === p.value ? styles.selectorTextActive : styles.selectorTextInactive}>{p.label}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
-                    </View>
-
-                    <View style={{ flex: 0.8 }}>
-                      <Text style={styles.fieldLabel}>Cant Dados</Text>
-                      <TextInput style={styles.inputCenter} keyboardType="numeric" value={attack.diceCount.toString()} onChangeText={(t) => updateAttack(index, 'diceCount', t)} />
-                    </View>
-
-                    <View style={{ flex: 0.8 }}>
-                      <Text style={styles.fieldLabel}>Tipo Dado</Text>
-                      <TextInput style={styles.inputCenter} value={attack.diceSize} onChangeText={(t) => updateAttack(index, 'diceSize', t)} />
-                    </View>
-
-                    <View style={{ flex: 0.8 }}>
-                      <Text style={styles.fieldLabel}>Daño Esp.</Text>
-                      <TextInput style={styles.inputCenter} keyboardType="numeric" value={attack.specDamage.toString()} onChangeText={(t) => updateAttack(index, 'specDamage', t)} />
+                      <View style={styles.modBadge}>
+                        <Text style={styles.modBadgeText}>{totalSave >= 0 ? `+${totalSave}` : totalSave}</Text>
+                      </View>
                     </View>
                   </View>
+                );
+              })}
+            </View>
+          )}
 
-                  <View style={[styles.rowLayout, { marginTop: 8, justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f4f4f5', paddingTop: 4 }]}>
-                    <Text style={styles.computedAttackResult}>Total Ataque: <Text style={{ color: '#004424' }}>+{atkBonus}</Text></Text>
-                    <Text style={styles.computedAttackResult}>Total Daño: <Text style={{ color: '#a62b17' }}>{attack.diceCount}{attack.diceSize} + {character.strength + attack.specDamage}</Text></Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
+          {/* COLAPSABLE: GOLPES */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenAttacks(!openAttacks)}>
+            <Text style={styles.summaryText}>Golpes y Armas Múltiples</Text>
+            <Text style={styles.summaryArrow}>{openAttacks ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openAttacks && (
+            <View style={styles.detailsBox}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.weaponTypeHeader}>Cuerpo a Cuerpo</Text>
+                <TouchableOpacity style={styles.addButton} onPress={addMeleeAttack}>
+                  <Text style={styles.addButtonText}>+ Añadir Arma</Text>
+                </TouchableOpacity>
+              </View>
 
-        {/* COLAPSABLE: PERÍCIAS */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenSkills(!openSkills)}>
-          <Text style={styles.summaryText}>Pericias y Habilidades</Text>
-          <Text style={styles.summaryArrow}>{openSkills ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openSkills && (
-          <View style={styles.detailsBox}>
-            {skillsList.map((skill) => {
-              const skillData = character[skill.field] as SkillData;
-              const total = skill.attrVal + getProfBonus(skillData.prof) + skillData.item - skillData.armorPen;
+              {character.meleeAttacks.map((attack, index) => {
+                const modifierAttr = attack.attrType === 'FUE' ? character.strength : character.dexterity;
+                const atkBonus = modifierAttr + getProfBonus(attack.prof) + attack.item;
+                return (
+                  <View key={index} style={styles.weaponAtkCardModifier}>
+                    <View style={styles.rowLayout}>
+                      <TextInput 
+                        style={styles.weaponInputNameEditable} 
+                        value={attack.weapon} 
+                        onChangeText={(t) => updateAttack(index, 'weapon', t)} 
+                      />
+                      <TouchableOpacity style={styles.removeWeaponButton} onPress={() => removeAttack(index)}>
+                        <Text style={styles.removeWeaponButtonText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
 
-              return (
-                <View key={skill.field} style={styles.skillContainerCard}>
-                  <View style={[styles.rowLayout, styles.skillHeaderDivider]}>
-                    <Text style={styles.skillMainName}>{skill.name} <Text style={styles.skillAttrHint}>({skill.attrName})</Text></Text>
-                    <View style={styles.skillTotalBadge}>
-                      <Text style={styles.skillTotalText}>{total >= 0 ? `+${total}` : total}</Text>
+                    <View style={[styles.rowLayout, { marginTop: 6, gap: 6, alignItems: 'center' }]}>
+                      <View style={{ flex: 1.5 }}>
+                        <Text style={styles.fieldLabel}>Competencia</Text>
+                        <View style={styles.selectorRowGroupSmall}>
+                          {PROF_LABELS.map((p) => (
+                            <TouchableOpacity key={p.value} onPress={() => updateAttack(index, 'prof', p.value)} style={[styles.selectorButtonStateSmall, attack.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
+                              <Text style={attack.prof === p.value ? styles.selectorTextActiveSmall : styles.selectorTextInactiveSmall}>{p.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+
+                      <View style={{ flex: 0.8 }}>
+                        <Text style={styles.fieldLabel}>Cant Dados</Text>
+                        <TextInput style={styles.inputCenter} keyboardType="numeric" value={attack.diceCount.toString()} onChangeText={(t) => updateAttack(index, 'diceCount', t)} />
+                      </View>
+
+                      <View style={{ flex: 0.8 }}>
+                        <Text style={styles.fieldLabel}>Tipo Dado</Text>
+                        <TextInput style={styles.inputCenter} value={attack.diceSize} onChangeText={(t) => updateAttack(index, 'diceSize', t)} />
+                      </View>
+
+                      <View style={{ flex: 0.8 }}>
+                        <Text style={styles.fieldLabel}>Daño Esp.</Text>
+                        <TextInput style={styles.inputCenter} keyboardType="numeric" value={attack.specDamage.toString()} onChangeText={(t) => updateAttack(index, 'specDamage', t)} />
+                      </View>
+                    </View>
+
+                    <View style={[styles.rowLayout, { marginTop: 8, justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f4f4f5', paddingTop: 4 }]}>
+                      <Text style={styles.computedAttackResult}>Total Ataque: <Text style={{ color: '#004424' }}>+{atkBonus}</Text></Text>
+                      <Text style={styles.computedAttackResult}>Total Daño: <Text style={{ color: '#a62b17' }}>{attack.diceCount}{attack.diceSize} + {character.strength + attack.specDamage}</Text></Text>
                     </View>
                   </View>
-                  <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
-                    <View style={[styles.selectorRowGroup, { flex: 1, marginRight: 6 }]}>
-                      {PROF_LABELS.map((p) => (
-                        <TouchableOpacity key={p.value} onPress={() => updateSkill(skill.field, 'prof', p.value)} style={[styles.selectorButtonStateSmall, skillData.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
-                          <Text style={skillData.prof === p.value ? styles.selectorTextActiveSmall : styles.selectorTextInactiveSmall}>{p.label}</Text>
-                        </TouchableOpacity>
-                      ))}
+                );
+              })}
+            </View>
+          )}
+
+          {/* COLAPSABLE: PERÍCIAS */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenSkills(!openSkills)}>
+            <Text style={styles.summaryText}>Pericias y Habilidades</Text>
+            <Text style={styles.summaryArrow}>{openSkills ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openSkills && (
+            <View style={styles.detailsBox}>
+              {skillsList.map((skill) => {
+                const skillData = character[skill.field] as SkillData;
+                const total = skill.attrVal + getProfBonus(skillData.prof) + skillData.item - skillData.armorPen;
+
+                return (
+                  <View key={skill.field} style={styles.skillContainerCard}>
+                    <View style={[styles.rowLayout, styles.skillHeaderDivider]}>
+                      <Text style={styles.skillMainName}>{skill.name} <Text style={styles.skillAttrHint}>({skill.attrName})</Text></Text>
+                      <View style={styles.skillTotalBadge}>
+                        <Text style={styles.skillTotalText}>{total >= 0 ? `+${total}` : total}</Text>
+                      </View>
                     </View>
-                    <View style={{ width: 40, marginRight: 4 }}>
-                      <TextInput style={styles.skillNumberInput} keyboardType="numeric" value={skillData.item.toString()} onChangeText={(t) => updateSkill(skill.field, 'item', t)} placeholder="Itm" />
-                    </View>
-                    <View style={{ width: 40 }}>
-                      <TextInput style={[styles.skillNumberInput, { color: '#a62b17' }]} keyboardType="numeric" value={skillData.armorPen.toString()} onChangeText={(t) => updateSkill(skill.field, 'armorPen', t)} placeholder="Pen" />
+                    <View style={[styles.rowLayout, { alignItems: 'center', marginTop: 4 }]}>
+                      <View style={[styles.selectorRowGroup, { flex: 1, marginRight: 6 }]}>
+                        {PROF_LABELS.map((p) => (
+                          <TouchableOpacity key={p.value} onPress={() => updateSkill(skill.field, 'prof', p.value)} style={[styles.selectorButtonStateSmall, skillData.prof === p.value ? styles.selectorButtonActive : styles.selectorButtonInactive]}>
+                            <Text style={skillData.prof === p.value ? styles.selectorTextActiveSmall : styles.selectorTextInactiveSmall}>{p.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <View style={{ width: 40, marginRight: 4 }}>
+                        <TextInput style={styles.skillNumberInput} keyboardType="numeric" value={skillData.item.toString()} onChangeText={(t) => updateSkill(skill.field, 'item', t)} placeholder="Itm" />
+                      </View>
+                      <View style={{ width: 40 }}>
+                        <TextInput style={[styles.skillNumberInput, { color: '#a62b17' }]} keyboardType="numeric" value={skillData.armorPen.toString()} onChangeText={(t) => updateSkill(skill.field, 'armorPen', t)} placeholder="Pen" />
+                      </View>
                     </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
+                );
+              })}
+            </View>
+          )}
 
-        {/* COLAPSABLE: CÓDICE DE TALENTOS */}
-        <TouchableOpacity style={styles.summary} onPress={() => setOpenFeats(!openFeats)}>
-          <Text style={styles.summaryText}>Códice de Talentos</Text>
-          <Text style={styles.summaryArrow}>{openFeats ? '▼' : '►'}</Text>
-        </TouchableOpacity>
-        {openFeats && (
-          <View style={styles.detailsBox}>
-            <TextInput style={styles.featsTextArea} multiline value={character.featsText} onChangeText={(text) => updateField('featsText', text)} underlineColorAndroid="transparent" />
-          </View>
-        )}
+          {/* COLAPSABLE: CÓDICE DE TALENTOS */}
+          <TouchableOpacity style={styles.summary} onPress={() => setOpenFeats(!openFeats)}>
+            <Text style={styles.summaryText}>Códice de Talentos</Text>
+            <Text style={styles.summaryArrow}>{openFeats ? '▼' : '►'}</Text>
+          </TouchableOpacity>
+          {openFeats && (
+            <View style={styles.detailsBox}>
+              <TextInput style={styles.featsTextArea} multiline value={character.featsText} onChangeText={(text) => updateField('featsText', text)} underlineColorAndroid="transparent" />
+            </View>
+          )}
 
-      </ScrollView>
+          <View style={{ height: 60 }} />
+
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -602,7 +681,17 @@ const styles = StyleSheet.create({
   center: { justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 10, fontSize: 13, fontWeight: 'bold', color: '#004424' },
   scrollContainer: { padding: 14, backgroundColor: '#ffffff' },
-  header: { borderBottomWidth: 4, borderBottomColor: '#004424', paddingBottom: 6, marginBottom: 16, alignItems: 'center' },
+  
+  /* BARRA DE SELECCIÓN DE PERSONAJES COMPATIBLE */
+  multiCharacterBar: { flexDirection: 'row', backgroundColor: '#004424', padding: 8, alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#d4d4d8' },
+  pickerManagerWrapper: { flex: 1, borderWidth: 1, borderColor: '#ffffff', borderRadius: 4, marginRight: 6, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden', height: 40, justifyContent: 'center' },
+  pickerSelectorNativo: { width: '100%', color: '#ffffff' },
+  multiBarActionsGroup: { flexDirection: 'row', gap: 4 },
+  barButtonAdd: { backgroundColor: '#16a34a', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 4, justifyContent: 'center' },
+  barButtonDelete: { backgroundColor: '#dc2626', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 4, justifyContent: 'center' },
+  barButtonText: { color: '#ffffff', fontSize: 11, fontWeight: 'bold' },
+
+  header: { borderBottomWidth: 4, borderBottomColor: '#004424', paddingBottom: 6, marginBottom: 16, marginTop: 6, alignItems: 'center' },
   headerTitle: { fontSize: 28, fontWeight: '900', color: '#004424' },
   headerSubtitleContainer: { backgroundColor: '#f4f4f5', paddingHorizontal: 12, paddingVertical: 2, marginTop: 4, borderRadius: 4 },
   headerSubtitle: { fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase', color: '#004424' },
@@ -643,7 +732,6 @@ const styles = StyleSheet.create({
   stateInputDying: { width: '100%', textAlign: 'center', fontWeight: 'bold', fontSize: 13, color: '#991b1b', padding: 0, borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
   stateInputWounded: { width: '100%', textAlign: 'center', fontWeight: 'bold', fontSize: 13, color: '#92400e', padding: 0, borderBottomWidth: 1, borderBottomColor: '#e4e4e7' },
   
-  /* NUEVOS SELECTORES DE COMPETENCIA */
   perceptionContainerIndependent: { borderWidth: 1, borderColor: '#d4d4d8', padding: 8, borderRadius: 4, backgroundColor: '#f4f4f5' },
   selectorRowGroup: { flex: 1, flexDirection: 'row', backgroundColor: '#e4e4e7', borderRadius: 6, padding: 2, marginRight: 8 },
   selectorButtonState: { flex: 1, paddingVertical: 6, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
@@ -667,7 +755,6 @@ const styles = StyleSheet.create({
   saveContainerBlock: { borderWidth: 1, borderColor: '#d4d4d8', padding: 8, borderRadius: 4, backgroundColor: '#ffffff', width: '100%' },
   saveTitleName: { fontSize: 11, fontWeight: 'bold', color: '#27272a' },
   
-  /* ELEMENTOS DINÁMICOS DE ARMAS */
   weaponTypeHeader: { fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', color: '#004424' },
   addButton: { backgroundColor: '#004424', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 4 },
   addButtonText: { color: '#ffffff', fontSize: 11, fontWeight: 'bold' },
