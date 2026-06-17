@@ -12,20 +12,18 @@ import {
   Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Picker } from '@react-native-picker/picker';
 
-// Importaciones Modulares Propias
+// Inyección de Módulos Propios Separados
 import { CharacterSheet, SkillData, SavingThrowData } from './src/types/character';
 import { STORAGE_KEY, PROF_LABELS } from './src/constants/rules';
 import { theme } from './src/styles/theme';
 import { 
   createNewCharacter, 
-  defaultFeatsText, 
   getProfBonus, 
   calculateAC 
 } from './src/utils/formulas';
 
-// Componentes Extraídos
+// Componentes Limpios Extraídos
 import { MultiCharacterBar } from './src/components/MultiCharacterBar';
 import { CollapsibleSection } from './src/components/CollapsibleSection';
 
@@ -35,7 +33,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const { width } = useWindowDimensions();
 
-  // Estados de control para secciones colapsables
+  // Estados de control para secciones colapsables (Acordeones)
   const [openBio, setOpenBio] = useState(true);
   const [openAttr, setOpenAttr] = useState(false);
   const [openSaves, setOpenSaves] = useState(false);
@@ -52,28 +50,12 @@ export default function App() {
           setCharacterList(list);
           if (list.length > 0) setActiveId(list[0].id);
         } else {
-          // Creación de personaje por defecto (Bárbaro)
-          const defaultBarbarian = { 
-            ...createNewCharacter("Bárbaro Hombre Rata (Oso)"), 
-            level: 2, ancestrality: "Beastkin (Ysoki)", heritage: "Rata de Cloaca", 
-            className: "Bárbaro (Instinto Animal)", hpCurrent: 34, hpMax: 34, 
-            strength: 4, dexterity: 2, constitution: 3, intelligence: -1, wisdom: 1, charisma: 2, 
-            featsText: defaultFeatsText 
-          };
-          defaultBarbarian.meleeAttacks = [
-            { weapon: "Fauces de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d10", specDamage: 2 },
-            { weapon: "Garras de Oso (Ira)", attrType: "FUE", prof: "trained", item: 0, diceCount: 1, diceSize: "d6", specDamage: 2 }
-          ];
-          defaultBarbarian.fortitude.prof = 'expert';
-          defaultBarbarian.will.prof = 'expert';
-          defaultBarbarian.athletics.prof = 'trained';
-          defaultBarbarian.intimidation.prof = 'trained';
-          defaultBarbarian.survival.prof = 'trained';
-          defaultBarbarian.perceptionProf = 'expert';
+          // Si el almacenamiento local está vacío, inicializa una sola hoja 100% limpia
+          const freshCharacter = createNewCharacter("Mi Primer Héroe");
+          const initialList = [freshCharacter];
           
-          const initialList = [defaultBarbarian];
           setCharacterList(initialList);
-          setActiveId(defaultBarbarian.id);
+          setActiveId(freshCharacter.id);
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(initialList));
         }
       } catch (error) {
@@ -269,7 +251,7 @@ export default function App() {
             </View>
           </CollapsibleSection>
 
-          {/* PANEL DE COMBATE (FIJO) */}
+          {/* PANEL DE COMBATE (FIJO PARA CONSULTA RÁPIDA) */}
           <View style={theme.combateCard}>
             <View style={theme.rowLayout}>
               <View style={[theme.quickStatBox, { marginRight: 4 }]}>
@@ -367,7 +349,7 @@ export default function App() {
             })}
           </CollapsibleSection>
 
-          {/* ACORDEÓN 4: GOLPES */}
+          {/* ACORDEÓN 4: GOLPES Y ARMAS */}
           <CollapsibleSection title="Golpes y Armas Múltiples" isOpen={openAttacks} onPress={() => setOpenAttacks(!openAttacks)}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
               <Text style={theme.weaponTypeHeader}>Cuerpo a Cuerpo</Text>
@@ -407,7 +389,7 @@ export default function App() {
             })}
           </CollapsibleSection>
 
-          {/* ACORDEÓN 5: PERÍCIAS */}
+          {/* ACORDEÓN 5: PERICIAS Y HABILIDADES */}
           <CollapsibleSection title="Pericias y Habilidades" isOpen={openSkills} onPress={() => setOpenSkills(!openSkills)}>
             {skillsList.map((skill) => {
               const skillData = character[skill.field] as SkillData;
@@ -439,6 +421,7 @@ export default function App() {
             <TextInput style={theme.featsTextArea} multiline value={character.featsText} onChangeText={(text) => updateField('featsText', text)} underlineColorAndroid="transparent" />
           </CollapsibleSection>
 
+          {/* Colchón de holgura táctica para el scroll del teclado */}
           <View style={{ height: 60 }} />
         </ScrollView>
       </KeyboardAvoidingView>
