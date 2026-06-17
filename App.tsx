@@ -12,6 +12,7 @@ import {
   Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Picker } from '@react-native-picker/picker';
 
 // Importaciones Modulares Propias
 import { CharacterSheet, SkillData, SavingThrowData } from './src/types/character';
