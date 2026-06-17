@@ -1,7 +1,13 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform, StatusBar } from 'react-native';
 
 export const theme = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#ffffff' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#ffffff',
+    // Parche dinámico para la barra de estado en Android:
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 
+  },
+  
   center: { justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 10, fontSize: 13, fontWeight: 'bold', color: '#004424' },
   scrollContainer: { padding: 14, backgroundColor: '#ffffff' },
